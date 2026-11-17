@@ -1,0 +1,6 @@
+# Caddy gets the HTTPS certificate on its own.
+# Replace contest.example.com with your domain. Its DNS A record must point at this server.
+# Install: sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+contest.example.com {
+	reverse_proxy localhost:3000
+}

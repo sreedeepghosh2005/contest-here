@@ -1,0 +1,19 @@
+{
+  "name": "contest-here",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Timed coding contest platform with an admin panel and a leaderboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build-runner": "docker build -t contest-here-runner runner",
+    "build-web": "npm --prefix web install && npm --prefix web run build"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "codemirror": "^5.65.18",
+    "express": "^4.21.2"
+  }
+}

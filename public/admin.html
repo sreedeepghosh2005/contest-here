@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Contest Here</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="/">Contest Here</a><span class="crumb">Admin</span><span class="spacer"></span>
+  <button class="secondary hidden" id="logout">Log out</button></header>
+
+<main id="login" class="hidden" style="max-width:420px">
+  <div class="card"><h2>Admin login</h2>
+    <form id="lf"><label for="pw">Password</label><input id="pw" type="password" required>
+      <div style="margin-top:14px"><button style="width:100%">Log in</button></div>
+      <div class="error" id="lerr"></div></form></div>
+</main>
+
+<main id="app" class="hidden">
+  <div class="card">
+    <h2>Events</h2>
+    <form id="ef" class="row">
+      <input id="ename" placeholder="Event name, e.g. CodeSprint 2026" class="grow" required>
+      <input id="ecode" placeholder="Code (optional)" style="width:170px">
+      <button>Create event</button>
+    </form>
+    <div class="error" id="eerr"></div>
+    <table style="margin-top:10px"><thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Questions</th><th>Participants</th><th></th></tr></thead>
+      <tbody id="events"></tbody></table>
+  </div>
+
+  <div id="detail" class="hidden">
+    <div class="card">
+      <div class="row"><h2 class="grow" id="dname" style="margin:0"></h2>
+        <button id="toggleOpen"></button>
+        <a id="dlb" target="_blank"><button class="secondary">Leaderboard</button></a>
+        <button class="secondary" id="resetBtn">Reset participants</button>
+        <button class="danger" id="delEvent">Delete event</button></div>
+      <p class="muted" id="joinInfo"></p>
+      <div class="tabs"><button data-tab="questions" class="active">Questions</button>
+        <button data-tab="submissions">Submissions</button></div>
+
+      <div id="tab-questions">
+        <table><thead><tr><th>Order</th><th>Title</th><th>Tests</th><th>Time limit</th><th></th></tr></thead>
+          <tbody id="questions"></tbody></table>
+        <div style="margin-top:12px"><button id="newQ">+ Add question</button></div>
+      </div>
+      <div id="tab-submissions" class="hidden">
+        <table><thead><tr><th>Time</th><th>Participant</th><th>Question</th><th>Language</th><th>Verdict</th><th></th></tr></thead>
+          <tbody id="subs"></tbody></table>
+        <pre id="subCode" class="hidden" style="max-height:420px"></pre>
+      </div>
+    </div>
+
+    <div class="card hidden" id="qform">
+      <h2 id="qformTitle">New question</h2>
+      <div class="row"><div class="grow"><label for="qtitle">Title</label><input id="qtitle"></div>
+        <div style="width:150px"><label for="qlimit">Time limit (ms)</label><input id="qlimit" type="number" value="2000"></div>
+        <div style="width:110px"><label for="qpos">Order</label><input id="qpos" type="number" value="0"></div></div>
+      <label for="qstatement">Statement (shown to participants after they press Start)</label>
+      <textarea id="qstatement" rows="10" style="font-family:inherit;font-size:14px"></textarea>
+      <h3 style="margin-top:16px">Test cases</h3>
+      <p class="muted">Sample tests are shown to participants with input and output. Hidden tests only show pass or fail.
+        Output is compared line by line. Trailing spaces and trailing blank lines are ignored.</p>
+      <div id="tcs"></div>
+      <div class="row"><button class="secondary" id="addTc" type="button">+ Add test case</button><span class="grow"></span>
+        <button class="secondary" id="cancelQ" type="button">Cancel</button><button id="saveQ" type="button">Save question</button></div>
+      <div class="error" id="qerr"></div>
+
+      <div id="checkBox" class="hidden" style="margin-top:20px">
+        <h3>Check with a reference solution</h3>
+        <p class="muted">Runs your solution against the saved test cases. Use it to make sure the expected outputs are right.</p>
+        <div class="row"><select id="clang" style="width:auto"></select></div>
+        <textarea id="ccode" rows="10" style="margin-top:8px"></textarea>
+        <div style="margin-top:8px"><button class="secondary" id="checkBtn" type="button">Run check</button></div>
+        <div id="cout"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/common.js"></script>
+<script>
+  let token = store('arena_admin');
+  let events = [], current = null, editing = null;
+  const call = (path, opts = {}) => api(path, { ...opts, token }).catch((err) => {
+    if (err.status === 401) { store('arena_admin', null); showLogin(); }
+    throw err;
+  });
+
+  function showLogin() { $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#logout').classList.add('hidden'); }
+  function showApp() { $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#logout').classList.remove('hidden'); loadEvents(); }
+
+  $('#lf').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      token = (await api('/api/admin/login', { method: 'POST', body: { password: $('#pw').value } })).token;
+      store('arena_admin', token);
+      showApp();
+    } catch (err) { $('#lerr').textContent = err.message; }
+  };
+  $('#logout').onclick = () => { store('arena_admin', null); token = null; showLogin(); };
+
+  async function loadEvents() {
+    events = await call('/api/admin/events');
+    $('#events').innerHTML = events.map((e) => `<tr>
+      <td>${esc(e.name)}</td><td><code>${esc(e.code)}</code></td>
+      <td>${e.is_open ? '<span class="pill ok">Open</span>' : '<span class="pill">Closed</span>'}</td>
+      <td>${e.question_count}</td><td>${e.participant_count}</td>
+      <td><button class="secondary" data-open="${e.id}">Manage</button></td></tr>`).join('')
+      || '<tr><td colspan="6" class="muted">No events yet.</td></tr>';
+    if (current) openEvent(current.id);
+  }
+  $('#events').onclick = (e) => { const id = e.target.dataset.open; if (id) openEvent(Number(id)); };
+
+  $('#ef').onsubmit = async (e) => {
+    e.preventDefault();
+    $('#eerr').textContent = '';
+    try {
+      const r = await call('/api/admin/events', { method: 'POST', body: { name: $('#ename').value, code: $('#ecode').value } });
+      $('#ename').value = ''; $('#ecode').value = '';
+      current = { id: r.id };
+      await loadEvents();
+    } catch (err) { $('#eerr').textContent = err.message; }
+  };
+
+  async function openEvent(id) {
+    current = events.find((e) => e.id === id);
+    if (!current) { $('#detail').classList.add('hidden'); return; }
+    $('#detail').classList.remove('hidden');
+    $('#dname').textContent = current.name;
+    $('#toggleOpen').textContent = current.is_open ? 'Close event' : 'Open event';
+    $('#toggleOpen').className = current.is_open ? 'danger' : 'ok';
+    $('#dlb').href = '/leaderboard.html?code=' + encodeURIComponent(current.code);
+    const link = `${location.origin}/?code=${encodeURIComponent(current.code)}`;
+    $('#joinInfo').innerHTML = `Participants join at <a href="${esc(link)}" target="_blank">${esc(link)}</a> with code <b>${esc(current.code)}</b>.
+      ${current.is_open ? '' : 'The event is closed: new people cannot join and nobody can start or submit.'}`;
+    loadQuestions();
+    loadSubs();
+  }
+
+  $('#toggleOpen').onclick = async () => {
+    await call('/api/admin/events/' + current.id, { method: 'PATCH', body: { is_open: !current.is_open } });
+    loadEvents();
+  };
+  $('#delEvent').onclick = async () => {
+    if (prompt(`Type the event code ${current.code} to delete the event and all its data.`) !== current.code) return;
+    await call('/api/admin/events/' + current.id, { method: 'DELETE' });
+    current = null; $('#detail').classList.add('hidden'); loadEvents();
+  };
+  $('#resetBtn').onclick = async () => {
+    if (prompt(`Type RESET to remove all participants, timers and submissions of ${current.code}. Questions stay.`) !== 'RESET') return;
+    await call(`/api/admin/events/${current.id}/reset`, { method: 'POST' });
+    loadEvents();
+  };
+
+  document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
+    $('#tab-questions').classList.toggle('hidden', b.dataset.tab !== 'questions');
+    $('#tab-submissions').classList.toggle('hidden', b.dataset.tab !== 'submissions');
+    if (b.dataset.tab === 'submissions') loadSubs();
+  });
+
+  let questions = [];
+  async function loadQuestions() {
+    questions = await call(`/api/admin/events/${current.id}/questions`);
+    $('#questions').innerHTML = questions.map((q) => `<tr><td>${q.position}</td><td>${esc(q.title)}</td>
+      <td>${q.test_cases.length} (${q.test_cases.filter((t) => t.is_sample).length} sample)</td><td>${q.time_limit_ms} ms</td>
+      <td class="row"><button class="secondary" data-edit="${q.id}">Edit</button>
+        <button class="danger" data-del="${q.id}">Delete</button></td></tr>`).join('')
+      || '<tr><td colspan="5" class="muted">No questions yet.</td></tr>';
+  }
+  $('#questions').onclick = async (e) => {
+    const { edit, del } = e.target.dataset;
+    if (edit) editQuestion(questions.find((q) => q.id === Number(edit)));
+    if (del && confirm('Delete this question, its test cases and its submissions?')) {
+      await call('/api/admin/questions/' + del, { method: 'DELETE' });
+      if (editing && editing.id === Number(del)) closeForm();
+      loadQuestions();
+    }
+  };
+
+  async function loadSubs() {
+    if (!current) return;
+    const subs = await call(`/api/admin/events/${current.id}/submissions`);
+    $('#subs').innerHTML = subs.map((s) => `<tr><td>${new Date(s.created_at).toLocaleTimeString()}</td>
+      <td>${esc(s.participant)}</td><td>${esc(s.question)}</td><td>${esc(LANGS[s.language].label)}</td>
+      <td>${verdictPill(s.verdict)}</td><td><button class="secondary" data-code="${s.id}">Code</button></td></tr>`).join('')
+      || '<tr><td colspan="6" class="muted">No submissions yet.</td></tr>';
+  }
+  $('#subs').onclick = async (e) => {
+    const id = e.target.dataset.code;
+    if (!id) return;
+    const s = await call('/api/admin/submissions/' + id);
+    $('#subCode').textContent = s.code;
+    $('#subCode').classList.remove('hidden');
+    $('#subCode').scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // ---- question form ----
+  function tcRow(t = { input: '', expected_output: '', is_sample: 0 }) {
+    const div = document.createElement('div');
+    div.className = 'tc';
+    div.innerHTML = `<div class="row"><b class="grow tc-n"></b>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;color:var(--text)">
+        <input type="checkbox" class="tc-sample" style="width:auto" ${t.is_sample ? 'checked' : ''}> Sample (visible)</label>
+      <button type="button" class="secondary tc-del">Remove</button></div>
+      <div class="grid2"><div><label>Input</label><textarea class="tc-in" rows="4"></textarea></div>
+        <div><label>Expected output</label><textarea class="tc-out" rows="4"></textarea></div></div>`;
+    $('.tc-in', div).value = t.input;
+    $('.tc-out', div).value = t.expected_output;
+    $('.tc-del', div).onclick = () => { div.remove(); numberTcs(); };
+    $('#tcs').appendChild(div);
+    numberTcs();
+  }
+  function numberTcs() { document.querySelectorAll('#tcs .tc-n').forEach((b, i) => b.textContent = 'Test ' + (i + 1)); }
+
+  function editQuestion(q) {
+    editing = q || null;
+    $('#qform').classList.remove('hidden');
+    $('#qformTitle').textContent = q ? 'Edit question' : 'New question';
+    $('#qtitle').value = q ? q.title : '';
+    $('#qstatement').value = q ? q.statement : '';
+    $('#qlimit').value = q ? q.time_limit_ms : 2000;
+    $('#qpos').value = q ? q.position : questions.length + 1;
+    $('#tcs').innerHTML = '';
+    (q ? q.test_cases : [{ input: '', expected_output: '', is_sample: 1 }]).forEach(tcRow);
+    $('#qerr').textContent = '';
+    $('#checkBox').classList.toggle('hidden', !q);
+    $('#cout').innerHTML = '';
+    $('#qform').scrollIntoView({ behavior: 'smooth' });
+  }
+  function closeForm() { editing = null; $('#qform').classList.add('hidden'); }
+  $('#newQ').onclick = () => editQuestion(null);
+  $('#addTc').onclick = () => tcRow();
+  $('#cancelQ').onclick = closeForm;
+
+  $('#saveQ').onclick = async () => {
+    $('#qerr').textContent = '';
+    const body = {
+      title: $('#qtitle').value, statement: $('#qstatement').value,
+      time_limit_ms: Number($('#qlimit').value), position: Number($('#qpos').value),
+      test_cases: [...document.querySelectorAll('#tcs .tc')].map((d) => ({
+        input: $('.tc-in', d).value, expected_output: $('.tc-out', d).value, is_sample: $('.tc-sample', d).checked })),
+    };
+    try {
+      if (editing) await call('/api/admin/questions/' + editing.id, { method: 'PUT', body });
+      else editing = { id: (await call(`/api/admin/events/${current.id}/questions`, { method: 'POST', body })).id };
+      await loadQuestions();
+      await loadEvents();
+      editQuestion(questions.find((q) => q.id === editing.id));
+      $('#qerr').innerHTML = '<span style="color:var(--ok)">Saved.</span>';
+    } catch (err) { $('#qerr').textContent = err.message; }
+  };
+
+  $('#clang').innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+  $('#ccode').value = LANGS.python.starter;
+  $('#clang').onchange = () => { $('#ccode').value = LANGS[$('#clang').value].starter; };
+  $('#checkBtn').onclick = async () => {
+    $('#checkBtn').disabled = true;
+    $('#cout').innerHTML = '<p class="muted">Running...</p>';
+    try {
+      const r = await call(`/api/admin/questions/${editing.id}/check`, { method: 'POST',
+        body: { language: $('#clang').value, code: $('#ccode').value } });
+      $('#cout').innerHTML = `<div style="margin:8px 0">${verdictPill(r.verdict)}</div>` +
+        (r.compile_output ? `<pre>${esc(r.compile_output)}</pre>` : '') +
+        r.tests.map((t, i) => `<div class="row" style="margin:4px 0"><b>Test ${i + 1}</b>${verdictPill(t.verdict)}
+          <span class="muted">${t.time_ms} ms</span></div>`).join('');
+    } catch (err) { $('#cout').innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+    $('#checkBtn').disabled = false;
+  };
+
+  token ? showApp() : showLogin();
+</script>
+</body>
+</html>

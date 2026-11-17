@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Questions · Contest Here</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="/">Contest Here</a><span class="crumb" id="ev"></span>
+  <span class="spacer"></span><span id="who" class="muted"></span>
+  <a id="lb" href="#">Leaderboard</a>
+  <button class="secondary" id="logout">Log out</button></header>
+<main>
+  <div class="card">
+    <h2>Questions</h2>
+    <p class="muted">The timer for a question starts when you press <b>Start</b>. It stops when your submission is accepted.
+      Fewest-time solvers rank highest. More questions solved always ranks above less time.</p>
+    <div id="closed" class="pill warn hidden" style="margin-bottom:10px">The event is closed. Submissions are off.</div>
+    <table><thead><tr><th>#</th><th>Question</th><th>Status</th><th>Time</th><th></th></tr></thead>
+      <tbody id="list"></tbody></table>
+  </div>
+</main>
+<script src="/common.js"></script>
+<script>
+  const token = store('arena_token');
+  if (!token) location.href = '/';
+  $('#logout').onclick = () => { store('arena_token', null); location.href = '/'; };
+
+  let offset = 0, data = null;
+  async function load() {
+    try {
+      data = await api('/api/me', { token });
+    } catch (err) {
+      if (err.status === 401) { store('arena_token', null); location.href = '/'; }
+      return;
+    }
+    offset = data.server_time - Date.now();
+    $('#ev').textContent = data.event.name;
+    $('#who').textContent = data.name;
+    $('#lb').href = '/leaderboard.html?code=' + encodeURIComponent(data.event.code);
+    $('#closed').classList.toggle('hidden', data.event.is_open);
+    render();
+  }
+  function render() {
+    if (!data) return;
+    $('#list').innerHTML = data.questions.map((q, i) => {
+      let status = '<span class="pill">Not started</span>', time = '';
+      if (q.solved_at) { status = '<span class="pill ok">Solved</span>'; time = fmtMs(q.solved_at - q.started_at); }
+      else if (q.started_at) { status = '<span class="pill warn">In progress</span>';
+        time = `<span class="timer" style="font-size:15px">${fmtMs(Date.now() + offset - q.started_at)}</span>`; }
+      const btn = q.started_at ? 'Open' : 'View';
+      return `<tr><td>${i + 1}</td><td>${esc(q.title)}</td><td>${status}</td><td>${time}</td>
+        <td><a href="/solve.html?q=${q.id}"><button class="secondary">${btn}</button></a></td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="muted">No questions yet.</td></tr>';
+  }
+  load();
+  setInterval(render, 1000);
+  setInterval(load, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# systemd unit for Contest Here.
+# Install: sudo cp deploy/contest-here.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now contest-here
+# The password lives in /etc/contest-here.env (one line: ADMIN_PASSWORD=...), not in this file.
+[Unit]
+Description=Contest Here
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+User=contest
+# The contest user must be in the docker group to start judge containers.
+WorkingDirectory=/opt/contest-here
+EnvironmentFile=/etc/contest-here.env
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/contest-here
+Environment=JUDGE_CONCURRENCY=4
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

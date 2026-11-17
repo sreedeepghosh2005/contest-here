@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Contest Here theme. Same values as public/style.css. */
+:root {
+  --background: #e9f2e5;
+  --foreground: #26332c;
+  --card: rgba(255, 255, 255, 0.62);
+  --card-foreground: #26332c;
+  --primary: #26332c;
+  --primary-foreground: #ffffff;
+  --accent: #e08a36;
+  --accent-foreground: #ffffff;
+  --muted: #dfe9da;
+  --muted-foreground: #66756c;
+  --destructive: #c8463d;
+  --border: rgba(38, 51, 44, 0.16);
+  --input: rgba(38, 51, 44, 0.38);
+  --ring: #e08a36;
+  --radius: 1.125rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-md: calc(var(--radius) - 6px);
+  --radius-lg: calc(var(--radius) - 2px);
+  --radius-xl: var(--radius);
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Unbounded", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply text-foreground antialiased;
+    font-family: var(--font-sans);
+    background:
+      radial-gradient(circle at 1px 1px, rgba(38, 51, 44, 0.13) 1px, transparent 1.2px) 0 0 / 22px 22px,
+      radial-gradient(ellipse at 50% 30%, #f8fbf6 0%, var(--background) 70%) fixed;
+    background-color: var(--background);
+  }
+}

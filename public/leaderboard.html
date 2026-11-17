@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leaderboard · Contest Here</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="/">Contest Here</a><span class="crumb" id="ev"></span>
+  <span class="spacer"></span><a href="/contest.html">My questions</a></header>
+<main>
+  <div class="card" id="pick">
+    <h2>Leaderboard</h2>
+    <form id="f" class="row"><input id="code" placeholder="Event code" class="grow" style="text-transform:uppercase">
+      <button>Show</button></form>
+    <div class="error" id="err"></div>
+  </div>
+  <div class="card hidden" id="board">
+    <div class="row"><h2 class="grow" id="name" style="margin:0"></h2><span class="muted">Updates every 5 seconds</span></div>
+    <p class="muted">Rank = most questions solved, then least total time. Time per question = from Start to the accepted submit.
+      Red number = wrong submissions on that question.</p>
+    <div class="scroll-x"><table class="lb"><thead id="head"></thead><tbody id="body"></tbody></table></div>
+  </div>
+</main>
+<script src="/common.js"></script>
+<script>
+  let code = new URLSearchParams(location.search).get('code');
+  let timer = null;
+  $('#f').onsubmit = (e) => {
+    e.preventDefault();
+    code = $('#code').value.trim();
+    history.replaceState(null, '', '?code=' + encodeURIComponent(code));
+    start();
+  };
+  async function load() {
+    try {
+      const d = await api('/api/leaderboard/' + encodeURIComponent(code));
+      $('#pick').classList.add('hidden');
+      $('#board').classList.remove('hidden');
+      $('#name').textContent = d.event.name + (d.event.is_open ? '' : ' (closed)');
+      $('#ev').textContent = d.event.code;
+      $('#head').innerHTML = `<tr><th>#</th><th>Name</th><th>Solved</th><th>Total time</th>
+        ${d.questions.map((q, i) => `<th title="${esc(q.title)}">Q${i + 1}</th>`).join('')}</tr>`;
+      $('#body').innerHTML = d.rows.map((r) => `<tr class="top${r.rank}">
+        <td class="rank">${r.rank}</td><td>${esc(r.name)}</td><td>${r.solved}</td>
+        <td style="font-family:var(--mono)">${fmtMs(r.total_ms)}</td>
+        ${d.questions.map((q) => {
+          const c = r.cells[q.id];
+          if (!c) return '<td></td>';
+          const wrong = c.wrong ? ` <span class="cell-try">(${c.wrong})</span>` : '';
+          if (c.ms != null) return `<td class="cell-ok">${fmtMs(c.ms)}${wrong}</td>`;
+          return `<td class="cell-open">…${wrong}</td>`;
+        }).join('')}</tr>`).join('')
+        || `<tr><td colspan="${4 + d.questions.length}" class="muted">Nobody has started yet.</td></tr>`;
+    } catch (err) {
+      $('#err').textContent = err.message;
+      $('#pick').classList.remove('hidden');
+      $('#board').classList.add('hidden');
+      clearInterval(timer);
+    }
+  }
+  function start() { clearInterval(timer); load(); timer = setInterval(load, 5000); }
+  if (code) { $('#code').value = code; start(); }
+</script>
+</body>
+</html>

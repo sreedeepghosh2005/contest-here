@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Solve · Contest Here</title>
+  <link rel="stylesheet" href="/vendor/codemirror/lib/codemirror.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="/">Contest Here</a><a class="crumb" href="/contest.html">&larr; Questions</a>
+  <b id="title"></b>
+  <span class="spacer"></span><span class="timer" id="timer"></span></header>
+
+<main id="gate" class="hidden" style="max-width:560px">
+  <div class="card" style="text-align:center">
+    <h2 id="gateTitle"></h2>
+    <p class="muted">The question is hidden until you start. Your timer starts the moment you press Start.
+      It cannot be paused or reset.</p>
+    <p class="muted" id="gateLimit"></p>
+    <button class="ok" id="start" style="font-size:17px;padding:10px 28px">Start</button>
+    <div class="error" id="gateErr"></div>
+  </div>
+</main>
+
+<div class="solve hidden" id="work">
+  <section class="card">
+    <div id="statement" class="statement"></div>
+    <div id="samples"></div>
+    <h3 style="margin-top:18px">Your submissions</h3>
+    <table><tbody id="history"></tbody></table>
+  </section>
+  <section class="card editor-wrap">
+    <div class="row" style="margin-bottom:10px">
+      <select id="lang" style="width:auto"></select>
+      <span class="grow"></span>
+      <button class="secondary" id="runBtn">Run</button>
+      <button class="ok" id="submitBtn">Submit</button>
+    </div>
+    <textarea id="code"></textarea>
+    <div class="bottom">
+      <label for="stdin">Custom input for Run</label>
+      <textarea id="stdin" rows="3"></textarea>
+      <div id="out"></div>
+    </div>
+  </section>
+</div>
+
+<script src="/vendor/codemirror/lib/codemirror.js"></script>
+<script src="/vendor/codemirror/mode/python/python.js"></script>
+<script src="/vendor/codemirror/mode/clike/clike.js"></script>
+<script src="/vendor/codemirror/addon/edit/matchbrackets.js"></script>
+<script src="/vendor/codemirror/addon/edit/closebrackets.js"></script>
+<script src="/common.js"></script>
+<script>
+  const token = store('arena_token');
+  if (!token) location.href = '/';
+  const qid = new URLSearchParams(location.search).get('q');
+  let q = null, offset = 0, editor = null;
+
+  const draftKey = (lang) => `arena_draft_${qid}_${lang}`;
+
+  async function load() {
+    try { q = await api('/api/questions/' + qid, { token }); }
+    catch (err) {
+      if (err.status === 401) { store('arena_token', null); location.href = '/'; }
+      document.body.innerHTML = `<main><div class="card">${esc(err.message)}</div></main>`;
+      return;
+    }
+    offset = q.server_time - Date.now();
+    $('#title').textContent = q.title;
+    document.title = q.title + ' · Contest Here';
+    if (!q.started_at) {
+      $('#gate').classList.remove('hidden');
+      $('#gateTitle').textContent = q.title;
+      $('#gateLimit').textContent = `Time limit per test: ${q.time_limit_ms} ms`;
+      return;
+    }
+    $('#gate').classList.add('hidden');
+    $('#work').classList.remove('hidden');
+    $('#statement').innerHTML = `<h2>${esc(q.title)}</h2>${esc(q.statement)}
+      <p class="muted">Time limit per test: ${q.time_limit_ms} ms. Read from standard input. Write to standard output.</p>`;
+    $('#samples').innerHTML = q.samples.map((s, i) => `
+      <h3 style="margin-top:14px">Sample ${i + 1}</h3>
+      <div class="muted">Input</div><pre>${esc(s.input)}</pre>
+      <div class="muted">Output</div><pre>${esc(s.expected_output)}</pre>`).join('');
+    if (q.samples.length && !$('#stdin').value) $('#stdin').value = q.samples[0].input;
+    renderHistory();
+    setupEditor();
+    if (q.solved_at) markSolved();
+  }
+
+  function renderHistory() {
+    $('#history').innerHTML = q.history.map((h) =>
+      `<tr><td>${new Date(h.created_at).toLocaleTimeString()}</td><td>${esc(LANGS[h.language].label)}</td>
+       <td>${verdictPill(h.verdict)}</td></tr>`).join('') || '<tr><td class="muted">None yet.</td></tr>';
+  }
+
+  function setupEditor() {
+    if (editor) return;
+    const sel = $('#lang');
+    sel.innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+    const startLang = (q.last_submission && q.last_submission.language) || store('arena_lang') || 'python';
+    sel.value = startLang;
+    editor = CodeMirror.fromTextArea($('#code'), {
+      lineNumbers: true, indentUnit: 4, tabSize: 4,
+      matchBrackets: true, autoCloseBrackets: true, mode: LANGS[startLang].mode,
+      extraKeys: { Tab: (cm) => cm.replaceSelection('    ') },
+    });
+    editor.setValue(store(draftKey(startLang)) ??
+      (q.last_submission && q.last_submission.language === startLang ? q.last_submission.code : LANGS[startLang].starter));
+    editor.on('change', () => store(draftKey(sel.value), editor.getValue()));
+    sel.onchange = () => {
+      store('arena_lang', sel.value);
+      editor.setOption('mode', LANGS[sel.value].mode);
+      editor.setValue(store(draftKey(sel.value)) ?? LANGS[sel.value].starter);
+    };
+  }
+
+  function tick() {
+    if (!q || !q.started_at) return;
+    const end = q.solved_at || (Date.now() + offset);
+    $('#timer').textContent = fmtMs(end - q.started_at);
+  }
+  setInterval(tick, 250);
+
+  function markSolved() {
+    $('#timer').classList.add('done');
+    $('#submitBtn').disabled = true;
+    $('#submitBtn').textContent = 'Solved';
+    tick();
+  }
+
+  function busy(on) {
+    $('#runBtn').disabled = on;
+    if (!q.solved_at) $('#submitBtn').disabled = on;
+  }
+
+  $('#start').onclick = async () => {
+    $('#start').disabled = true;
+    try { await api(`/api/questions/${qid}/start`, { method: 'POST', token }); await load(); }
+    catch (err) { $('#gateErr').textContent = err.message; $('#start').disabled = false; }
+  };
+
+  $('#runBtn').onclick = async () => {
+    busy(true);
+    $('#out').innerHTML = '<p class="muted">Running...</p>';
+    try {
+      const r = await api(`/api/questions/${qid}/run`, { method: 'POST', token,
+        body: { language: $('#lang').value, code: editor.getValue(), input: $('#stdin').value } });
+      if (!r.compile.ok) {
+        $('#out').innerHTML = `${verdictPill('Compilation Error')}<pre>${esc(r.compile.output)}</pre>`;
+      } else {
+        const t = r.tests[0];
+        const label = t.status === 'tle' ? 'Time Limit Exceeded' : t.status === 'rte' ? 'Runtime Error' : 'Finished';
+        $('#out').innerHTML = `<div class="row">${t.status === 'ok' ? '<span class="pill">Finished</span>' : verdictPill(label)}
+          <span class="muted">${t.time_ms} ms</span></div>
+          <div class="muted" style="margin-top:6px">Output</div><pre>${esc(t.stdout) || '<span class="muted">(empty)</span>'}</pre>
+          ${t.stderr ? `<div class="muted">Errors</div><pre>${esc(t.stderr)}</pre>` : ''}`;
+      }
+    } catch (err) {
+      $('#out').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+    busy(false);
+  };
+
+  $('#submitBtn').onclick = async () => {
+    busy(true);
+    $('#out').innerHTML = '<p class="muted">Judging on all test cases...</p>';
+    try {
+      const r = await api(`/api/questions/${qid}/submit`, { method: 'POST', token,
+        body: { language: $('#lang').value, code: editor.getValue() } });
+      let html = `<div class="row">${verdictPill(r.verdict)}${r.solve_ms != null
+        ? `<span>Solved in <b>${fmtMs(r.solve_ms)}</b></span>` : ''}</div>`;
+      if (r.compile_output) html += `<pre>${esc(r.compile_output)}</pre>`;
+      html += r.tests.map((t, i) => `
+        <div class="tc"><div class="row"><b>Test ${i + 1}</b>${t.sample ? '<span class="pill">sample</span>' : '<span class="pill">hidden</span>'}
+          ${verdictPill(t.verdict)}<span class="muted">${t.time_ms} ms</span></div>
+          ${t.sample && t.verdict !== 'Passed' ? `<div class="muted">Expected</div><pre>${esc(t.expected)}</pre>
+            <div class="muted">Your output</div><pre>${esc(t.got)}</pre>` : ''}
+          ${t.stderr && t.verdict === 'Runtime Error' ? `<div class="muted">Errors</div><pre>${esc(t.stderr)}</pre>` : ''}
+        </div>`).join('');
+      $('#out').innerHTML = html;
+      const fresh = await api('/api/questions/' + qid, { token });
+      q.history = fresh.history;
+      q.solved_at = fresh.solved_at;
+      renderHistory();
+      if (q.solved_at) markSolved();
+    } catch (err) {
+      $('#out').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+    busy(false);
+  };
+
+  load();
+</script>
+</body>
+</html>
