@@ -2,6 +2,12 @@
 
 Timed coding contests for events. Admins add questions and test cases. Participants press Start, solve, and race on the leaderboard. Languages: C, C++, Java, Python 3.
 
+**Demo:** https://sreedeepghosh2005.github.io/contest-here/
+
+> **Not open source. All rights reserved.** You can read the code and try it on your own computer.
+> To run it for a contest or any event with participants, you need written permission first.
+> [Request permission](https://github.com/sreedeepghosh2005/contest-here/issues/new?template=permission-request.yml). See [LICENSE](LICENSE).
+
 ## Run it
 
 Needs Node 22.13+ and Docker.
@@ -25,6 +31,10 @@ shadcn components live in `web/src/components/ui/`. The shadcn CLI adds new ones
 
 `npm run build-web` writes to `public-landing/`. `server.js` serves that folder before `public/`.
 Run it again after any change in `web/`.
+
+`npm --prefix web run build:pages` builds the demo site (`web/src/Showcase.tsx` + `web/pages-public/shots/`) into `web/dist-pages/`.
+`sh web/deploy-demo.sh` builds it and pushes it to the `gh-pages` branch. GitHub Pages serves that branch.
+Run it after you change the demo site.
 
 ## Theme
 

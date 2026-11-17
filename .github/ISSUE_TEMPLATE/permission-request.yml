@@ -1,0 +1,45 @@
+name: Permission request
+description: Ask to use Contest Here for your contest or event.
+title: "[Permission] "
+labels: ["permission-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Contest Here is not open source. Tell me about your event, and I will reply here.
+        This issue is public. Do not put passwords, phone numbers or private details in it.
+  - type: input
+    id: organiser
+    attributes:
+      label: Organiser
+      description: Your club, college, company or group.
+    validations:
+      required: true
+  - type: input
+    id: event
+    attributes:
+      label: Event name and date
+      placeholder: "CodeSprint 2026, 14 March 2026"
+    validations:
+      required: true
+  - type: input
+    id: size
+    attributes:
+      label: Expected number of participants
+    validations:
+      required: true
+  - type: dropdown
+    id: format
+    attributes:
+      label: Format
+      options:
+        - In person
+        - Online
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else
+      description: Where it will run, whether it is paid or free to enter, how to reach you.
